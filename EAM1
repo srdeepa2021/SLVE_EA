@@ -1,0 +1,1246 @@
+import React, { useState, useEffect } from 'react';
+import { Clock, Users, Calendar, LogIn, LogOut, UserPlus, BarChart3, Menu, X, CheckCircle, XCircle, FileText, Edit } from 'lucide-react';
+
+export default function AttendanceApp() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentView, setCurrentView] = useState('login');
+  const [users, setUsers] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const usersResult = await window.storage.get('attendance_users');
+      const attendanceResult = await window.storage.get('attendance_records');
+      
+      if (usersResult) {
+        setUsers(JSON.parse(usersResult.value));
+      } else {
+        const defaultUsers = [
+          {
+            id: 1,
+            username: 'admin',
+            password: 'admin123',
+            fullName: 'System Administrator',
+            email: 'admin@company.com',
+            role: 'admin',
+            department: 'Management',
+            employeeId: 'EMP001',
+            isActive: true,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 2,
+            username: 'employee1',
+            password: 'emp123',
+            fullName: 'John Doe',
+            email: 'john@company.com',
+            role: 'employee',
+            department: 'IT',
+            employeeId: 'EMP002',
+            isActive: true,
+            createdAt: new Date().toISOString()
+          }
+        ];
+        setUsers(defaultUsers);
+        await window.storage.set('attendance_users', JSON.stringify(defaultUsers));
+      }
+      
+      if (attendanceResult) {
+        setAttendanceRecords(JSON.parse(attendanceResult.value));
+      }
+    } catch (error) {
+      const defaultUsers = [
+        {
+          id: 1,
+          username: 'admin',
+          password: 'admin123',
+          fullName: 'System Administrator',
+          email: 'admin@company.com',
+          role: 'admin',
+          department: 'Management',
+          employeeId: 'EMP001',
+          isActive: true,
+          createdAt: new Date().toISOString()
+        }
+      ];
+      setUsers(defaultUsers);
+    }
+  };
+
+  const saveUsers = async (newUsers) => {
+    setUsers(newUsers);
+    try {
+      await window.storage.set('attendance_users', JSON.stringify(newUsers));
+    } catch (error) {
+      console.error('Failed to save users:', error);
+    }
+  };
+
+  const saveAttendance = async (newRecords) => {
+    setAttendanceRecords(newRecords);
+    try {
+      await window.storage.set('attendance_records', JSON.stringify(newRecords));
+    } catch (error) {
+      console.error('Failed to save attendance:', error);
+    }
+  };
+
+  const handleLogin = (username, password) => {
+    const user = users.find(u => u.username === username && u.password === password && u.isActive);
+    if (user) {
+      setCurrentUser(user);
+      setCurrentView(user.role === 'admin' ? 'adminDashboard' : 'employeeDashboard');
+      return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentView('login');
+    setMobileMenuOpen(false);
+  };
+
+  const handleRegister = (userData) => {
+    const newUser = {
+      id: users.length + 1,
+      ...userData,
+      role: 'employee',
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    saveUsers([...users, newUser]);
+    return true;
+  };
+
+  const handleMarkAttendance = (employeeId, date, status, notes = '') => {
+    const existingIndex = attendanceRecords.findIndex(
+      r => r.userId === employeeId && r.date === date
+    );
+
+    const timestamp = new Date().toISOString();
+    
+    if (existingIndex !== -1) {
+      const updatedRecords = [...attendanceRecords];
+      updatedRecords[existingIndex] = {
+        ...updatedRecords[existingIndex],
+        status,
+        notes,
+        updatedAt: timestamp,
+        updatedBy: currentUser.id
+      };
+      saveAttendance(updatedRecords);
+    } else {
+      const newRecord = {
+        id: attendanceRecords.length + 1,
+        userId: employeeId,
+        date,
+        status,
+        notes,
+        markedBy: currentUser.id,
+        createdAt: timestamp
+      };
+      saveAttendance([...attendanceRecords, newRecord]);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {currentUser && (
+        <Header 
+          user={currentUser} 
+          onLogout={handleLogout}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+        />
+      )}
+      
+      <main className="container mx-auto px-4 py-8">
+        {currentView === 'login' && (
+          <LoginView onLogin={handleLogin} />
+        )}
+        
+        {currentView === 'employeeDashboard' && (
+          <EmployeeDashboard 
+            user={currentUser}
+            attendanceRecords={attendanceRecords.filter(r => r.userId === currentUser.id)}
+          />
+        )}
+        
+        {currentView === 'adminDashboard' && (
+          <AdminDashboard 
+            users={users}
+            attendanceRecords={attendanceRecords}
+          />
+        )}
+        
+        {currentView === 'addEmployee' && (
+          <AddEmployeeView onRegister={handleRegister} setCurrentView={setCurrentView} />
+        )}
+        
+        {currentView === 'markAttendance' && (
+          <MarkAttendanceView 
+            users={users.filter(u => u.role === 'employee')}
+            attendanceRecords={attendanceRecords}
+            onMarkAttendance={handleMarkAttendance}
+          />
+        )}
+        
+        {currentView === 'generateReport' && (
+          <GenerateReportView 
+            users={users.filter(u => u.role === 'employee')}
+            attendanceRecords={attendanceRecords}
+          />
+        )}
+        
+        {currentView === 'allEmployees' && (
+          <AllEmployeesView users={users.filter(u => u.role === 'employee')} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Header({ user, onLogout, currentView, setCurrentView, mobileMenuOpen, setMobileMenuOpen }) {
+  const isAdmin = user.role === 'admin';
+  
+  return (
+    <header className="bg-white shadow-lg border-b-2 border-indigo-100">
+      <div className="container mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl">
+              <Clock className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">Attendance Manager</h1>
+              <p className="text-sm text-gray-600">{user.fullName} • {user.role === 'admin' ? 'Administrator' : 'Employee'}</p>
+            </div>
+          </div>
+          
+          <button 
+            className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          
+          <nav className="hidden md:flex items-center space-x-2">
+            {isAdmin ? (
+              <>
+                <NavButton
+                  onClick={() => setCurrentView('adminDashboard')}
+                  active={currentView === 'adminDashboard'}
+                  icon={<BarChart3 className="w-4 h-4" />}
+                  text="Dashboard"
+                />
+                <NavButton
+                  onClick={() => setCurrentView('addEmployee')}
+                  active={currentView === 'addEmployee'}
+                  icon={<UserPlus className="w-4 h-4" />}
+                  text="Add Employee"
+                />
+                <NavButton
+                  onClick={() => setCurrentView('markAttendance')}
+                  active={currentView === 'markAttendance'}
+                  icon={<CheckCircle className="w-4 h-4" />}
+                  text="Mark Attendance"
+                />
+                <NavButton
+                  onClick={() => setCurrentView('generateReport')}
+                  active={currentView === 'generateReport'}
+                  icon={<FileText className="w-4 h-4" />}
+                  text="Reports"
+                />
+                <NavButton
+                  onClick={() => setCurrentView('allEmployees')}
+                  active={currentView === 'allEmployees'}
+                  icon={<Users className="w-4 h-4" />}
+                  text="Employees"
+                />
+              </>
+            ) : (
+              <>
+                <NavButton
+                  onClick={() => setCurrentView('employeeDashboard')}
+                  active={currentView === 'employeeDashboard'}
+                  icon={<BarChart3 className="w-4 h-4" />}
+                  text="My Dashboard"
+                />
+              </>
+            )}
+            <button
+              onClick={onLogout}
+              className="ml-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center space-x-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Logout</span>
+            </button>
+          </nav>
+        </div>
+        
+        {mobileMenuOpen && (
+          <nav className="md:hidden mt-4 space-y-2">
+            {isAdmin ? (
+              <>
+                <MobileNavButton onClick={() => { setCurrentView('adminDashboard'); setMobileMenuOpen(false); }} text="Dashboard" />
+                <MobileNavButton onClick={() => { setCurrentView('addEmployee'); setMobileMenuOpen(false); }} text="Add Employee" />
+                <MobileNavButton onClick={() => { setCurrentView('markAttendance'); setMobileMenuOpen(false); }} text="Mark Attendance" />
+                <MobileNavButton onClick={() => { setCurrentView('generateReport'); setMobileMenuOpen(false); }} text="Reports" />
+                <MobileNavButton onClick={() => { setCurrentView('allEmployees'); setMobileMenuOpen(false); }} text="Employees" />
+              </>
+            ) : (
+              <MobileNavButton onClick={() => { setCurrentView('employeeDashboard'); setMobileMenuOpen(false); }} text="My Dashboard" />
+            )}
+            <button onClick={onLogout} className="w-full text-left px-4 py-2 bg-red-500 text-white rounded-lg">
+              Logout
+            </button>
+          </nav>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function NavButton({ onClick, active, icon, text }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-lg transition flex items-center space-x-2 ${
+        active
+          ? 'bg-indigo-600 text-white shadow-md'
+          : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span>{text}</span>
+    </button>
+  );
+}
+
+function MobileNavButton({ onClick, text }) {
+  return (
+    <button onClick={onClick} className="w-full text-left px-4 py-2 rounded-lg bg-gray-50 hover:bg-gray-100">
+      {text}
+    </button>
+  );
+}
+
+function LoginView({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const success = onLogin(username, password);
+    if (!success) {
+      setError('Invalid credentials! Please check your username and password.');
+      setTimeout(() => setError(''), 4000);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-12">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 border border-gray-100">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl mb-4 shadow-lg">
+            <Clock className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-3xl font-bold text-gray-800">Welcome Back</h2>
+          <p className="text-gray-600 mt-2">Sign in to access your account</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg text-sm flex items-start space-x-2">
+              <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Username
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              placeholder="Enter your username"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+          
+          <button
+            type="submit"
+            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-lg"
+          >
+            Sign In
+          </button>
+        </form>
+        
+        <div className="mt-6 space-y-3">
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm text-blue-900 font-semibold mb-2">🔑 Admin Login:</p>
+            <p className="text-xs text-blue-700">Username: <span className="font-mono bg-blue-100 px-2 py-1 rounded">admin</span></p>
+            <p className="text-xs text-blue-700">Password: <span className="font-mono bg-blue-100 px-2 py-1 rounded">admin123</span></p>
+          </div>
+          <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+            <p className="text-sm text-green-900 font-semibold mb-2">👤 Employee Login:</p>
+            <p className="text-xs text-green-700">Username: <span className="font-mono bg-green-100 px-2 py-1 rounded">employee1</span></p>
+            <p className="text-xs text-green-700">Password: <span className="font-mono bg-green-100 px-2 py-1 rounded">emp123</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon, title, value, color, subtitle }) {
+  const colorClasses = {
+    blue: 'from-blue-500 to-blue-600',
+    green: 'from-green-500 to-green-600',
+    purple: 'from-purple-500 to-purple-600',
+    indigo: 'from-indigo-500 to-indigo-600',
+    orange: 'from-orange-500 to-orange-600',
+    red: 'from-red-500 to-red-600'
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition">
+      <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]} mb-4 shadow-md`}>
+        <div className="text-white">{icon}</div>
+      </div>
+      <h3 className="text-gray-600 text-sm font-medium mb-1">{title}</h3>
+      <p className="text-3xl font-bold text-gray-800">{value}</p>
+      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+    </div>
+  );
+}
+
+function EmployeeDashboard({ user, attendanceRecords }) {
+  const today = new Date().toISOString().split('T')[0];
+  const last30Days = attendanceRecords.slice(-30).reverse();
+  const presentDays = attendanceRecords.filter(r => r.status === 'present').length;
+  const absentDays = attendanceRecords.filter(r => r.status === 'absent').length;
+  const leaveDays = attendanceRecords.filter(r => r.status === 'leave').length;
+  const attendanceRate = attendanceRecords.length > 0 
+    ? ((presentDays / attendanceRecords.length) * 100).toFixed(1) 
+    : 0;
+
+  const todayRecord = attendanceRecords.find(r => r.date === today);
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">Welcome, {user.fullName}!</h2>
+        <p className="text-indigo-100">Employee ID: {user.employeeId} • Department: {user.department}</p>
+      </div>
+
+      {todayRecord && (
+        <div className={`rounded-xl shadow-lg p-6 border-2 ${
+          todayRecord.status === 'present' 
+            ? 'bg-green-50 border-green-200' 
+            : todayRecord.status === 'absent'
+            ? 'bg-red-50 border-red-200'
+            : 'bg-blue-50 border-blue-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-gray-800 mb-1">Today's Status</h3>
+              <p className="text-gray-600">Date: {new Date(today).toLocaleDateString()}</p>
+            </div>
+            <div className={`px-6 py-3 rounded-xl font-bold text-lg ${
+              todayRecord.status === 'present'
+                ? 'bg-green-500 text-white'
+                : todayRecord.status === 'absent'
+                ? 'bg-red-500 text-white'
+                : 'bg-blue-500 text-white'
+            }`}>
+              {todayRecord.status.toUpperCase()}
+            </div>
+          </div>
+          {todayRecord.notes && (
+            <div className="mt-4 p-3 bg-white rounded-lg">
+              <p className="text-sm font-medium text-gray-700">Note: {todayRecord.notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+      
+      <div className="grid md:grid-cols-4 gap-6">
+        <StatCard 
+          icon={<Calendar className="w-8 h-8" />}
+          title="Total Days"
+          value={attendanceRecords.length}
+          color="blue"
+        />
+        <StatCard 
+          icon={<CheckCircle className="w-8 h-8" />}
+          title="Present Days"
+          value={presentDays}
+          color="green"
+        />
+        <StatCard 
+          icon={<XCircle className="w-8 h-8" />}
+          title="Absent Days"
+          value={absentDays}
+          color="red"
+        />
+        <StatCard 
+          icon={<BarChart3 className="w-8 h-8" />}
+          title="Attendance Rate"
+          value={`${attendanceRate}%`}
+          color="indigo"
+        />
+      </div>
+      
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Recent Attendance History (Last 30 Days)</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {last30Days.length > 0 ? last30Days.map(record => (
+                <tr key={record.id} className="border-b hover:bg-gray-50 transition">
+                  <td className="py-3 px-4">{new Date(record.date).toLocaleDateString()}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-4 py-1 rounded-full text-sm font-semibold ${
+                      record.status === 'present' 
+                        ? 'bg-green-100 text-green-800' 
+                        : record.status === 'absent'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {record.status}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-gray-600">{record.notes || '-'}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan="3" className="py-8 text-center text-gray-500">
+                    No attendance records found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboard({ users, attendanceRecords }) {
+  const employees = users.filter(u => u.role === 'employee');
+  const today = new Date().toISOString().split('T')[0];
+  const todayRecords = attendanceRecords.filter(r => r.date === today);
+  const presentToday = todayRecords.filter(r => r.status === 'present').length;
+  const absentToday = todayRecords.filter(r => r.status === 'absent').length;
+  const notMarked = employees.length - todayRecords.length;
+  const totalRecords = attendanceRecords.length;
+  const attendanceRate = totalRecords > 0 
+    ? ((attendanceRecords.filter(r => r.status === 'present').length / totalRecords) * 100).toFixed(1) 
+    : 0;
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">Admin Dashboard</h2>
+        <p className="text-indigo-100">Complete overview and management control</p>
+      </div>
+
+      <div className="grid md:grid-cols-4 gap-6">
+        <StatCard 
+          icon={<Users className="w-8 h-8" />}
+          title="Total Employees"
+          value={employees.length}
+          color="blue"
+          subtitle="Active employees"
+        />
+        <StatCard 
+          icon={<CheckCircle className="w-8 h-8" />}
+          title="Present Today"
+          value={presentToday}
+          color="green"
+          subtitle={`Out of ${employees.length}`}
+        />
+        <StatCard 
+          icon={<XCircle className="w-8 h-8" />}
+          title="Absent Today"
+          value={absentToday}
+          color="red"
+          subtitle={`Not marked: ${notMarked}`}
+        />
+        <StatCard 
+          icon={<BarChart3 className="w-8 h-8" />}
+          title="Overall Rate"
+          value={`${attendanceRate}%`}
+          color="indigo"
+          subtitle="Total attendance"
+        />
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Today's Attendance Overview</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map(emp => {
+                const record = todayRecords.find(r => r.userId === emp.id);
+                return (
+                  <tr key={emp.id} className="border-b hover:bg-gray-50 transition">
+                    <td className="py-3 px-4 font-medium">{emp.fullName}</td>
+                    <td className="py-3 px-4 text-gray-600">{emp.employeeId}</td>
+                    <td className="py-3 px-4 text-gray-600">{emp.department}</td>
+                    <td className="py-3 px-4">
+                      {record ? (
+                        <span className={`px-4 py-1 rounded-full text-sm font-semibold ${
+                          record.status === 'present'
+                            ? 'bg-green-100 text-green-800'
+                            : record.status === 'absent'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {record.status}
+                        </span>
+                      ) : (
+                        <span className="px-4 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-600">
+                          Not Marked
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddEmployeeView({ onRegister, setCurrentView }) {
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    fullName: '',
+    email: '',
+    department: '',
+    employeeId: ''
+  });
+  const [message, setMessage] = useState({ text: '', type: '' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onRegister(formData);
+    setMessage({ text: 'Employee registered successfully!', type: 'success' });
+    setFormData({ username: '', password: '', fullName: '', email: '', department: '', employeeId: '' });
+    setTimeout(() => {
+      setMessage({ text: '', type: '' });
+    }, 3000);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">Add New Employee</h2>
+        <p className="text-indigo-100">Register a new employee in the system</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+        {message.text && (
+          <div className={`mb-6 p-4 rounded-lg flex items-center space-x-2 ${
+            message.type === 'success'
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+            <span className="font-medium">{message.text}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Full Name *
+              </label>
+              <input
+                type="text"
+                value={formData.fullName}
+                onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="John Doe"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Employee ID *
+              </label>
+              <input
+                type="text"
+                value={formData.employeeId}
+                onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="EMP001"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Username *
+              </label>
+              <input
+                type="text"
+                value={formData.username}
+                onChange={(e) => setFormData({...formData, username: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="john.doe"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password *
+              </label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="john@company.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Department *
+              </label>
+              <select
+                value={formData.department}
+                onChange={(e) => setFormData({...formData, department: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                required
+              >
+                <option value="">Select Department</option>
+                <option value="IT">IT</option>
+                <option value="HR">HR</option>
+                <option value="Sales">Sales</option>
+                <option value="Marketing">Marketing</option>
+                <option value="Finance">Finance</option>
+                <option value="Operations">Operations</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex space-x-4">
+            <button
+              type="submit"
+              className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-lg"
+            >
+              Register Employee
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentView('adminDashboard')}
+              className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function MarkAttendanceView({ users, attendanceRecords, onMarkAttendance }) {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedEmployee, setSelectedEmployee] = useState('');
+  const [status, setStatus] = useState('present');
+  const [notes, setNotes] = useState('');
+  const [message, setMessage] = useState({ text: '', type: '' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onMarkAttendance(parseInt(selectedEmployee), selectedDate, status, notes);
+    setMessage({ text: 'Attendance marked successfully!', type: 'success' });
+    setSelectedEmployee('');
+    setStatus('present');
+    setNotes('');
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+  };
+
+  const dateRecords = attendanceRecords.filter(r => r.date === selectedDate);
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">Mark Attendance</h2>
+        <p className="text-indigo-100">Record daily attendance for employees</p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Mark Attendance</h3>
+          
+          {message.text && (
+            <div className={`mb-4 p-4 rounded-lg flex items-center space-x-2 ${
+              message.type === 'success'
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+              <span className="font-medium">{message.text}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Date *
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Employee *
+              </label>
+              <select
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                required
+              >
+                <option value="">Select Employee</option>
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName} ({user.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Status *
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                required
+              >
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+                <option value="leave">On Leave</option>
+                <option value="half-day">Half Day</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Notes (Optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                rows="3"
+                placeholder="Add any notes..."
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-lg"
+            >
+              Mark Attendance
+            </button>
+          </form>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">
+            Attendance for {new Date(selectedDate).toLocaleDateString()}
+          </h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {users.map(user => {
+              const record = dateRecords.find(r => r.userId === user.id);
+              return (
+                <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-800">{user.fullName}</p>
+                    <p className="text-sm text-gray-500">{user.employeeId}</p>
+                  </div>
+                  {record ? (
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      record.status === 'present'
+                        ? 'bg-green-100 text-green-800'
+                        : record.status === 'absent'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {record.status}
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-200 text-gray-600">
+                      Not Marked
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GenerateReportView({ users, attendanceRecords }) {
+  const [reportType, setReportType] = useState('daily');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
+
+  const getReportData = () => {
+    if (reportType === 'daily') {
+      const dateRecords = attendanceRecords.filter(r => r.date === selectedDate);
+      return users.map(user => {
+        const record = dateRecords.find(r => r.userId === user.id);
+        return {
+          employee: user.fullName,
+          employeeId: user.employeeId,
+          department: user.department,
+          status: record ? record.status : 'Not Marked',
+          notes: record ? record.notes : '-'
+        };
+      });
+    } else if (reportType === 'range') {
+      const filteredUsers = selectedEmployee === 'all' ? users : users.filter(u => u.id === parseInt(selectedEmployee));
+      
+      return filteredUsers.map(user => {
+        const userRecords = attendanceRecords.filter(r => 
+          r.userId === user.id && 
+          r.date >= startDate && 
+          r.date <= endDate
+        );
+        const present = userRecords.filter(r => r.status === 'present').length;
+        const absent = userRecords.filter(r => r.status === 'absent').length;
+        const leave = userRecords.filter(r => r.status === 'leave').length;
+        const total = userRecords.length;
+        const rate = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
+
+        return {
+          employee: user.fullName,
+          employeeId: user.employeeId,
+          department: user.department,
+          present,
+          absent,
+          leave,
+          total,
+          rate: `${rate}%`
+        };
+      });
+    }
+    return [];
+  };
+
+  const reportData = getReportData();
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">Generate Reports</h2>
+        <p className="text-indigo-100">View and export attendance reports</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Report Configuration</h3>
+        
+        <div className="grid md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Report Type
+            </label>
+            <select
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="daily">Daily Report</option>
+              <option value="range">Date Range Report</option>
+            </select>
+          </div>
+
+          {reportType === 'daily' ? (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Select Date
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Employee
+                </label>
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Employees</option>
+                  {users.map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.fullName} ({user.employeeId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-gray-800">
+            {reportType === 'daily' 
+              ? `Report for ${new Date(selectedDate).toLocaleDateString()}`
+              : `Report from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}`
+            }
+          </h3>
+          <button
+            onClick={() => {
+              const csv = reportType === 'daily'
+                ? 'Employee,Employee ID,Department,Status,Notes\n' + 
+                  reportData.map(r => `${r.employee},${r.employeeId},${r.department},${r.status},${r.notes}`).join('\n')
+                : 'Employee,Employee ID,Department,Present,Absent,Leave,Total,Rate\n' +
+                  reportData.map(r => `${r.employee},${r.employeeId},${r.department},${r.present},${r.absent},${r.leave},${r.total},${r.rate}`).join('\n');
+              const blob = new Blob([csv], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `attendance_report_${new Date().toISOString().split('T')[0]}.csv`;
+              a.click();
+            }}
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-2 rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition shadow-lg flex items-center space-x-2"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Export CSV</span>
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                {reportType === 'daily' ? (
+                  <>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Notes</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Present</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Absent</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Leave</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Total</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Rate</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {reportData.map((row, idx) => (
+                <tr key={idx} className="border-b hover:bg-gray-50 transition">
+                  <td className="py-3 px-4 font-medium">{row.employee}</td>
+                  <td className="py-3 px-4 text-gray-600">{row.employeeId}</td>
+                  <td className="py-3 px-4 text-gray-600">{row.department}</td>
+                  {reportType === 'daily' ? (
+                    <>
+                      <td className="py-3 px-4">
+                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                          row.status === 'present'
+                            ? 'bg-green-100 text-green-800'
+                            : row.status === 'absent'
+                            ? 'bg-red-100 text-red-800'
+                            : row.status === 'leave'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-gray-600">{row.notes}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-3 px-4 text-gray-600">{row.present}</td>
+                      <td className="py-3 px-4 text-gray-600">{row.absent}</td>
+                      <td className="py-3 px-4 text-gray-600">{row.leave}</td>
+                      <td className="py-3 px-4 text-gray-600">{row.total}</td>
+                      <td className="py-3 px-4">
+                        <span className="font-semibold text-indigo-600">{row.rate}</span>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AllEmployeesView({ users }) {
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
+        <h2 className="text-3xl font-bold mb-2">All Employees</h2>
+        <p className="text-indigo-100">Complete employee directory</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Username</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(user => (
+                <tr key={user.id} className="border-b hover:bg-gray-50 transition">
+                  <td className="py-3 px-4 font-medium">{user.employeeId}</td>
+                  <td className="py-3 px-4">{user.fullName}</td>
+                  <td className="py-3 px-4 text-gray-600">{user.username}</td>
+                  <td className="py-3 px-4 text-gray-600">{user.email || 'N/A'}</td>
+                  <td className="py-3 px-4 text-gray-600">{user.department}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      user.isActive
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {user.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
